@@ -1,0 +1,20 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+venv/
+.env/
+.env.local
+.env.*.local
+
+# VSCode / PyCharm
+.vscode/
+.idea/
+
+# OS fajlovi
+.DS_Store
+Thumbs.db
