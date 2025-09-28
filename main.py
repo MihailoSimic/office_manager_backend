@@ -1,21 +1,18 @@
-# main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import router-a
-from routers import user
-from routers import reservation
-from routers import seat
+from routers import user, reservation, seat
 
-# ========================
-# FastAPI app
-# ========================
 app = FastAPI()
 
 # ========================
-# CORS middleware (za React frontend)
+# CORS middleware
 # ========================
-origins = ["http://localhost:5173"]  # tvoj frontend
+origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,9 +29,6 @@ app.include_router(user.router)
 app.include_router(reservation.router)
 app.include_router(seat.router)
 
-# ========================
-# Test ruta (opciono)
-# ========================
 @app.get("/")
 async def root():
     return {"message": "Backend radi! FastAPI + MongoDB + router setup"}

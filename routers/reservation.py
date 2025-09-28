@@ -41,39 +41,66 @@ async def get_reservations(
 # ========================
 # POST: kreiranje nove rezervacije
 # ========================
+
 @router.post("/create")
 async def create_reservation(
     reservation: Reservation,
     current_user: str = Depends(get_current_user)
 ):
-    # uvek dodeljuj username iz tokena
+    
     reservation.username = current_user
 
-    # Provera da li je mesto zauzeto na odabrani datum
     existing = await reservations_collection.find_one({
         "date": reservation.date,
-        "seat_number": reservation.seat_number
+        "seat_number": reservation.seat_number,
+        "status": "approved"
     })
     if existing:
-        raise HTTPException(status_code=400, detail="Mesto je već zauzeto za odabrani datum")
-    
-    result = await reservations_collection.insert_one(reservation.dict())
-    return {"message": f"Mesto {reservation.seat_number} rezervisano za {reservation.date}", "id": str(result.inserted_id)}
+        raise HTTPException(
+            status_code=400,
+            detail="Mesto je već zauzeto (odobrena rezervacija) za odabrani datum"
+        )
 
-# ========================
-# PUT: menja status rezervacije (approve/reject) - za admina
-# ========================
+    result = await reservations_collection.insert_one(reservation.dict())
+    return {
+        "message": f"Mesto {reservation.seat_number} rezervisano za {reservation.date}",
+        "id": str(result.inserted_id)
+    }
+
+
 @router.put("/{reservation_id}")
 async def update_reservation_status(
     reservation_id: str,
     status: str,
     current_user: str = Depends(get_current_user)
 ):
-    # Ovde možeš dodati proveru da li je current_user admin
+    # nađi rezervaciju koju menjamo
+    reservation = await reservations_collection.find_one({"_id": ObjectId(reservation_id)})
+    if not reservation:
+        raise HTTPException(status_code=404, detail="Rezervacija nije pronađena")
+
+    # ako admin pokušava da postavi na 'approved'
+    if status == "approved":
+        # proveri da li već postoji approved rezervacija za isto mesto i datum
+        existing = await reservations_collection.find_one({
+            "date": reservation["date"],
+            "seat_number": reservation["seat_number"],
+            "status": "approved",
+            "_id": {"$ne": ObjectId(reservation_id)}  # ignoriši ovu rezervaciju
+        })
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="Već postoji odobrena rezervacija za to mesto i datum"
+            )
+
+    # update statusa
     result = await reservations_collection.update_one(
         {"_id": ObjectId(reservation_id)},
         {"$set": {"status": status}}
     )
+
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Rezervacija nije pronađena")
+
     return {"message": f"Rezervacija {reservation_id} ažurirana sa statusom {status}"}
