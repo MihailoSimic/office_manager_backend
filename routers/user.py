@@ -47,6 +47,19 @@ async def login(data: User, response: Response):
     
     raise HTTPException(status_code=401, detail="Neispravno korisničko ime ili lozinka")
 
+@router.get("")
+async def get_users(access_token: str = Cookie(None)):
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Token nedostaje")
+    
+    username = verify_token(access_token)
+    if not username:
+        raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
+    users = []
+    async for user in users_collection.find():
+        users.append(user_without_password(user))
+    return {"users": users}
+
 # ========================
 # Dohvat informacija o korisniku (zaštićena ruta)
 # ========================
