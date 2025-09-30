@@ -6,8 +6,7 @@
 2. Kreiraj i aktiviraj virtuelno okruženje:
    ```bash
    python -m venv venv
-   source venv/bin/activate      # Linux / macOS
-   venv\Scripts\activate         # Windows
+   venv\Scripts\activate
    ```
 3. Instaliraj zavisnosti:
    ```bash
@@ -15,7 +14,7 @@
    ```
 4. Pokreni aplikaciju:
    ```bash
-   uvicorn main:app --reload --host 0.0.0.0 --port 8000
+   uvicorn main:app --reload
    ```
    Backend će raditi na [http://localhost:8000](http://localhost:8000).
 
