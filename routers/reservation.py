@@ -53,12 +53,12 @@ async def create_reservation(
     existing = await reservations_collection.find_one({
         "date": reservation.date,
         "seat_number": reservation.seat_number,
-        "status": "approved"
+        "status": {"$in": ["approved", "pending"]}
     })
     if existing:
         raise HTTPException(
             status_code=400,
-            detail="Mesto je već zauzeto (odobrena rezervacija) za odabrani datum"
+            detail="Mesto je već zauzeto (rezervacija je već u toku ili odobrena) za odabrani datum"
         )
 
     result = await reservations_collection.insert_one(reservation.dict())

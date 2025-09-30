@@ -4,3 +4,4 @@ class Seat(BaseModel):
     seat_number: int
     row: int
     col: int
+    enabled: bool
