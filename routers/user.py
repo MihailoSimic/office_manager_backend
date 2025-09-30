@@ -1,8 +1,10 @@
+
 from fastapi import APIRouter, HTTPException, Cookie, Response
 from db import users_collection
 from models.user import User
 from bson import ObjectId
 from auth import create_access_token, verify_token
+import bcrypt
 
 router = APIRouter(prefix="/user", tags=["user"])
 
@@ -18,34 +20,53 @@ def user_without_id(user_dict):
 # ========================
 # Registracija korisnika
 # ========================
+
 @router.post("/register")
-async def register(user: User):
+async def register(user: User, response: Response):
     existing_user = await users_collection.find_one({"username": user.username})
     if existing_user:
         raise HTTPException(status_code=400, detail="Korisnik već postoji")
-    
-    await users_collection.insert_one(user.dict())
-    user_data = user_without_id(user.dict())
+
+    # Hash lozinke
+    hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
+    user_dict = user.dict()
+    user_dict["password"] = hashed_password.decode('utf-8')
+
+    await users_collection.insert_one(user_dict)
+    user_data = user_without_id(user_dict)
+
+    # Kreiraj token i setuj ga u cookie
+    token = create_access_token({"sub": user.username})
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        path="/"
+    )
     return {"message": "Korisnik uspešno registrovan", "user": user_data}
 
 # ========================
 # Login sa JWT tokenom u HttpOnly cookie
 # ========================
+
 @router.post("/login")
 async def login(data: User, response: Response):
     user_in_db = await users_collection.find_one({"username": data.username})
-    if user_in_db and user_in_db["password"] == data.password:
-        token = create_access_token({"sub": user_in_db["username"]})
-        response.set_cookie(
-            key="access_token",
-            value=token,
-            httponly=True,
-            samesite="lax",
-            secure=False,
-            path="/"
-        )
-        return {"user": user_without_id(user_in_db)}
-    
+    if user_in_db:
+        hashed_pw = user_in_db.get("password", "")
+        if bcrypt.checkpw(data.password.encode('utf-8'), hashed_pw.encode('utf-8')):
+            token = create_access_token({"sub": user_in_db["username"]})
+            response.set_cookie(
+                key="access_token",
+                value=token,
+                httponly=True,
+                samesite="lax",
+                secure=False,
+                path="/"
+            )
+            return {"user": user_without_id(user_in_db)}
     raise HTTPException(status_code=401, detail="Neispravno korisničko ime ili lozinka")
 
 # ========================
