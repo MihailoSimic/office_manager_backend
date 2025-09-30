@@ -15,27 +15,20 @@ async def get_current_user(access_token: str = Cookie(None)):
     return username
 
 @router.get("/")
-async def get_reservations(
-    date: str = None,
-    current_user: str = Depends(get_current_user)
-):
-    query = {}
-    if date:
-        query["date"] = date
-
-    reservations = await reservations_collection.find(query).to_list(length=100)
-    
-    for r in reservations:
-        r["_id"] = str(r["_id"])
-    
-    return reservations
+async def get_reservations():
+    try:
+        reservations = await reservations_collection.find({}).to_list(length=100)
+        for r in reservations:
+            r["_id"] = str(r["_id"])
+        return reservations
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Greška pri dohvatanju rezervacija: {str(e)}")
 
 @router.post("/create")
 async def create_reservation(
     reservation: Reservation,
     current_user: str = Depends(get_current_user)
 ):
-    
     reservation.username = current_user
 
     existing = await reservations_collection.find_one({
@@ -49,7 +42,11 @@ async def create_reservation(
             detail="Mesto je već zauzeto (rezervacija je već u toku ili odobrena) za odabrani datum"
         )
 
-    result = await reservations_collection.insert_one(reservation.dict())
+    try:
+        result = await reservations_collection.insert_one(reservation.dict())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Greška pri kreiranju rezervacije: {str(e)}")
+
     return {
         "message": f"Mesto {reservation.seat_number} rezervisano za {reservation.date}",
         "id": str(result.inserted_id)
@@ -61,17 +58,25 @@ async def update_reservation_status(
     reservation_id: str,
     status: str
 ):
-    reservation = await reservations_collection.find_one({"_id": ObjectId(reservation_id)})
+    allowed_statuses = {"approved", "rejected", "pending"}
+    if status not in allowed_statuses:
+        raise HTTPException(status_code=400, detail="Nevalidan status rezervacije")
+
+    try:
+        obj_id = ObjectId(reservation_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Neispravan ID rezervacije")
+
+    reservation = await reservations_collection.find_one({"_id": obj_id})
     if not reservation:
         raise HTTPException(status_code=404, detail="Rezervacija nije pronađena")
 
     if status == "approved":
-        
         existing = await reservations_collection.find_one({
             "date": reservation["date"],
             "seat_number": reservation["seat_number"],
             "status": "approved",
-            "_id": {"$ne": ObjectId(reservation_id)}
+            "_id": {"$ne": obj_id}
         })
         if existing:
             raise HTTPException(
@@ -79,12 +84,15 @@ async def update_reservation_status(
                 detail="Već postoji odobrena rezervacija za to mesto i datum"
             )
 
-    result = await reservations_collection.update_one(
-        {"_id": ObjectId(reservation_id)},
-        {"$set": {"status": status}}
-    )
+    try:
+        result = await reservations_collection.update_one(
+            {"_id": obj_id},
+            {"$set": {"status": status}}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Greška pri ažuriranju rezervacije: {str(e)}")
 
     if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Rezervacija nije pronađena")
+        raise HTTPException(status_code=404, detail="Rezervacija nije pronađena (tokom ažuriranja)")
 
     return {"message": f"Rezervacija je uspešno ažurirana sa statusom {status}"}

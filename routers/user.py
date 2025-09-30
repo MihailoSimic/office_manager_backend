@@ -5,6 +5,7 @@ from models.user import User
 from bson import ObjectId
 from auth import create_access_token, verify_token
 import bcrypt
+import re
 
 router = APIRouter(prefix="/user", tags=["user"])
 
@@ -18,14 +19,16 @@ def user_without_id(user_dict):
 async def get_users(access_token: str = Cookie(None)):
     if not access_token:
         raise HTTPException(status_code=401, detail="Token nedostaje")
-    
     username = verify_token(access_token)
     if not username:
         raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
-    users = []
-    async for user in users_collection.find():
-        users.append(user_without_id(user))
-    return {"users": users}
+    try:
+        users = []
+        async for user in users_collection.find():
+            users.append(user_without_id(user))
+        return {"users": users}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Greška pri dohvatanju korisnika: {str(e)}")
 
 @router.put("/{user_id}")
 async def update_user(user_id: str, updated_user: User, access_token: str = Cookie(None)):
@@ -46,18 +49,27 @@ async def update_user(user_id: str, updated_user: User, access_token: str = Cook
         if "_id" in new_data:
             del new_data["_id"]
 
-        if "password" in new_data and new_data["password"]:
-            new_data["password"] = bcrypt.hashpw(new_data["password"].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        if "password" in new_data:
+            if new_data["password"] == "":
+                raise HTTPException(status_code=400, detail="Lozinka ne sme biti prazna.")
+            elif new_data["password"]:
+                new_data["password"] = bcrypt.hashpw(new_data["password"].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-        result = await users_collection.replace_one(
-            {"_id": oid},
-            new_data
-        )
+        try:
+            result = await users_collection.replace_one(
+                {"_id": oid},
+                new_data
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Greška pri ažuriranju korisnika: {str(e)}")
 
         if result.matched_count == 0:
             raise HTTPException(status_code=400, detail="Korisnik nije pronađen")
 
-        updated_user_db = await users_collection.find_one({"_id": oid})
+        try:
+            updated_user_db = await users_collection.find_one({"_id": oid})
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Greška pri dohvatanju ažuriranog korisnika: {str(e)}")
         return {
             "message": "Korisnik uspešno ažuriran",
             "user": user_without_id(updated_user_db)
@@ -92,27 +104,37 @@ async def delete_user(user_id: str, access_token: str = Cookie(None)):
 
 @router.post("/register")
 async def register(user: User, response: Response):
-    existing_user = await users_collection.find_one({"username": user.username})
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Korisnik već postoji")
+    try:
+        existing_user = await users_collection.find_one({"username": user.username})
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Korisnik već postoji")
 
-    hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
-    user_dict = user.dict()
-    user_dict["password"] = hashed_password.decode('utf-8')
+        # Regex identičan kao na FE: bar 5 karaktera, jedno veliko slovo, jedan broj i jedan specijalan znak
+        password_regex = r'^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};\':"\\|,.<>/?]).{5,}$'
+        if not re.match(password_regex, user.password):
+            raise HTTPException(status_code=400, detail="Lozinka mora imati bar 5 karaktera, jedno veliko slovo, jedan broj i jedan specijalan znak.")
 
-    await users_collection.insert_one(user_dict)
-    user_data = user_without_id(user_dict)
+        hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
+        user_dict = user.dict()
+        user_dict["password"] = hashed_password.decode('utf-8')
 
-    token = create_access_token({"sub": user.username})
-    response.set_cookie(
-        key="access_token",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=False,
-        path="/"
-    )
-    return {"message": "Korisnik uspešno registrovan", "user": user_data}
+        await users_collection.insert_one(user_dict)
+        user_data = user_without_id(user_dict)
+
+        token = create_access_token({"sub": user.username})
+        response.set_cookie(
+            key="access_token",
+            value=token,
+            httponly=True,
+            samesite="lax",
+            secure=False,
+            path="/"
+        )
+        return {"message": "Korisnik uspešno registrovan", "user": user_data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Greška pri registraciji: {str(e)}")
 
 @router.post("/login")
 async def login(data: User, response: Response):
