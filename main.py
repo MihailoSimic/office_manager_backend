@@ -11,8 +11,8 @@ app = FastAPI()
 # ========================
 origins = [
     "http://localhost:3000",
-    "http://localhost:5173",
-]
+    "http://localhost:5173"
+    ]  # Browser koji pravi fetch
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,7 +21,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # ========================
 # Registracija router-a
 # ========================

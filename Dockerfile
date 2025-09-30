@@ -1,18 +1,18 @@
-# Koristimo Python 3.11
-FROM python:3.11-slim
+FROM python:3.12-slim
 
-# Setujemo radni direktorijum
 WORKDIR /app
 
-# Kopiramo requirements.txt i instaliramo zavisnosti
-COPY requirements.txt .
+# Kopiraj fajlove
+COPY ./requirements.txt /app/requirements.txt
+
+# Instaliraj dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Kopiramo sav backend kod
-COPY . .
+# Kopiraj ostatak koda
+COPY . /app
 
-# Expose port FastAPI aplikacije
+# Expose port
 EXPOSE 8000
 
-# Startujemo FastAPI server
+# Start backend
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

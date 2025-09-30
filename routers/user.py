@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Cookie, Response
 from db import users_collection
 from models.user import User
+from bson import ObjectId
 from auth import create_access_token, verify_token
 
 router = APIRouter(prefix="/user", tags=["user"])
@@ -8,9 +9,8 @@ router = APIRouter(prefix="/user", tags=["user"])
 # ========================
 # Helper funkcija za uklanjanje lozinke i _id konverziju
 # ========================
-def user_without_password(user_dict):
+def user_without_id(user_dict):
     user_copy = user_dict.copy()
-    user_copy.pop("password", None)
     if "_id" in user_copy:
         user_copy["_id"] = str(user_copy["_id"])
     return user_copy
@@ -25,7 +25,7 @@ async def register(user: User):
         raise HTTPException(status_code=400, detail="Korisnik već postoji")
     
     await users_collection.insert_one(user.dict())
-    user_data = user_without_password(user.dict())
+    user_data = user_without_id(user.dict())
     return {"message": "Korisnik uspešno registrovan", "user": user_data}
 
 # ========================
@@ -40,13 +40,27 @@ async def login(data: User, response: Response):
             key="access_token",
             value=token,
             httponly=True,
-            samesite="strict"
+            samesite="lax",
+            secure=False,
+            path="/"
         )
-        user_data = user_without_password(user_in_db)
-        return {"user": user_data}
+        return {"user": user_without_id(user_in_db)}
     
     raise HTTPException(status_code=401, detail="Neispravno korisničko ime ili lozinka")
 
+# ========================
+# Logout (uklanjanje cookie)
+# ========================
+@router.post("/logout")
+async def logout(response: Response):
+    response.delete_cookie(
+        key="access_token",
+        path="/",       # mora biti isto kao kod setovanja
+        httponly=True,  # isto kao kod setovanja
+        samesite="lax", # isto kao kod setovanja
+        secure=False    # localhost
+    )
+    return {"message": "Uspešno ste se odjavili"}
 @router.get("")
 async def get_users(access_token: str = Cookie(None)):
     if not access_token:
@@ -57,7 +71,7 @@ async def get_users(access_token: str = Cookie(None)):
         raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
     users = []
     async for user in users_collection.find():
-        users.append(user_without_password(user))
+        users.append(user_without_id(user))
     return {"users": users}
 
 # ========================
@@ -76,13 +90,70 @@ async def me(access_token: str = Cookie(None)):
     if not user_in_db:
         raise HTTPException(status_code=404, detail="Korisnik ne postoji")
     
-    user_data = user_without_password(user_in_db)
-    return {"user": user_data}
+    return {"user": user_without_id(user_in_db)}
+
+@router.put("/{user_id}")
+async def update_user(user_id: str, updated_user: User):
+    try:
+        # Pretvaranje user_id u ObjectId
+        try:
+            oid = ObjectId(user_id)
+        except:
+            raise HTTPException(status_code=400, detail="Neispravan ID")
+
+        # Pretvaranje u dict i uklanjanje _id
+        new_data = updated_user.dict(exclude_none=True)
+        if "_id" in new_data:
+            del new_data["_id"]
+
+        result = await users_collection.replace_one(
+            {"_id": oid},
+            new_data
+        )
+
+        if result.matched_count == 0:
+            raise HTTPException(status_code=400, detail="Korisnik nije pronađen")
+
+        return {"message": "Korisnik uspešno ažuriran"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ========================
-# Logout (uklanjanje cookie)
+# DELETE korisnika
 # ========================
-@router.post("/logout")
-async def logout(response: Response):
-    response.delete_cookie("access_token")
-    return {"message": "Uspešno ste se odjavili"}
+@router.delete("/{user_id}")
+async def delete_user(user_id: str):
+    try:
+        # prvo proveri da li je user_id validan ObjectId
+        if not ObjectId.is_valid(user_id):
+            raise HTTPException(status_code=400, detail="Nevažeći ID korisnika")
+
+        result = await users_collection.delete_one({"_id": ObjectId(user_id)})
+
+        if result.deleted_count == 0:
+            return {"message": "Korisnik već ne postoji ili je već obrisan"}
+
+        return {"message": "Korisnik uspešno obrisan"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+@router.get("/checkToken")
+async def check_token(access_token: str = Cookie(None)):
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Token nedostaje")
+
+    username = verify_token(access_token)
+    if not username:
+        raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
+
+    user = await users_collection.find_one({"username": username})
+    if not user:
+        raise HTTPException(status_code=401, detail="Korisnik ne postoji")
+
+    return {
+        "message": "Token je validan",
+        "username": username,
+        "role": user.get("role", "user")  # default role = user
+    }
