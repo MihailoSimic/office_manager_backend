@@ -5,7 +5,7 @@
 1. Install Python 3.10+  
 2. Create and activate a virtual environment:
    ```bash
-   python -m venv venv
+   py -m venv venv
    venv\Scripts\activate
    ```
 3. Install dependencies:
