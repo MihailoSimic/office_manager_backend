@@ -138,48 +138,61 @@ async def register(user: User, response: Response):
 
 @router.post("/login")
 async def login(data: User, response: Response):
-    user_in_db = await users_collection.find_one({"username": data.username})
-    if user_in_db:
-        hashed_pw = user_in_db.get("password", "")
-        if bcrypt.checkpw(data.password.encode('utf-8'), hashed_pw.encode('utf-8')):
-            token = create_access_token({"sub": user_in_db["username"]})
-            response.set_cookie(
-                key="access_token",
-                value=token,
-                httponly=True,
-                samesite="lax",
-                secure=False,
-                path="/"
-            )
-            return {"user": user_without_id(user_in_db)}
-    raise HTTPException(status_code=401, detail="Neispravno korisničko ime ili lozinka")
+    try:
+        user_in_db = await users_collection.find_one({"username": data.username})
+        if user_in_db:
+            hashed_pw = user_in_db.get("password", "")
+            if bcrypt.checkpw(data.password.encode('utf-8'), hashed_pw.encode('utf-8')):
+                token = create_access_token({"sub": user_in_db["username"]})
+                response.set_cookie(
+                    key="access_token",
+                    value=token,
+                    httponly=True,
+                    samesite="lax",
+                    secure=False,
+                    path="/"
+                )
+                return {"user": user_without_id(user_in_db)}
+        raise HTTPException(status_code=401, detail="Neispravno korisničko ime ili lozinka")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Greška pri loginu: {str(e)}")
 
 @router.post("/logout")
 async def logout(response: Response):
-    response.delete_cookie(
-        key="access_token",
-        path="/",
-        httponly=True,
-        samesite="lax",
-        secure=False
-    )
-    return {"message": "Uspešno ste se odjavili"}
+    try:
+        response.delete_cookie(
+            key="access_token",
+            path="/",
+            httponly=True,
+            samesite="lax",
+            secure=False
+        )
+        return {"message": "Uspešno ste se odjavili"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Greška pri odjavi: {str(e)}")
     
 @router.get("/checkToken")
 async def check_token(access_token: str = Cookie(None)):
-    if not access_token:
-        raise HTTPException(status_code=401, detail="Token nedostaje")
+    try:
+        if not access_token:
+            raise HTTPException(status_code=401, detail="Token nedostaje")
 
-    username = verify_token(access_token)
-    if not username:
-        raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
+        username = verify_token(access_token)
+        if not username:
+            raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
 
-    user = await users_collection.find_one({"username": username})
-    if not user:
-        raise HTTPException(status_code=401, detail="Korisnik ne postoji")
+        user = await users_collection.find_one({"username": username})
+        if not user:
+            raise HTTPException(status_code=401, detail="Korisnik ne postoji")
 
-    return {
-        "message": "Token je validan",
-        "username": username,
-        "role": user.get("role", "user")
-    }
+        return {
+            "message": "Token je validan",
+            "username": username,
+            "role": user.get("role", "user")
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Greška pri proveri tokena: {str(e)}")
