@@ -19,7 +19,7 @@
    Backend će raditi na [http://localhost:8000](http://localhost:8000).
 
 ⚠️ Potrebno je da MongoDB radi lokalno (default na `mongodb://localhost:27017/office_manager`).  
-Ako koristiš drugu konekciju, promeni `MONGO_URI` u `.env` fajlu ili kao environment varijablu.
+Ako koristiš drugu konekciju, promeni `MONGO_URI` u `db.py` fajlu.
 
 ---
 
