@@ -8,18 +8,87 @@ import bcrypt
 
 router = APIRouter(prefix="/user", tags=["user"])
 
-# ========================
-# Helper funkcija za uklanjanje lozinke i _id konverziju
-# ========================
 def user_without_id(user_dict):
     user_copy = user_dict.copy()
     if "_id" in user_copy:
         user_copy["_id"] = str(user_copy["_id"])
     return user_copy
 
-# ========================
-# Registracija korisnika
-# ========================
+@router.get("")
+async def get_users(access_token: str = Cookie(None)):
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Token nedostaje")
+    
+    username = verify_token(access_token)
+    if not username:
+        raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
+    users = []
+    async for user in users_collection.find():
+        users.append(user_without_id(user))
+    return {"users": users}
+
+@router.put("/{user_id}")
+async def update_user(user_id: str, updated_user: User, access_token: str = Cookie(None)):
+    try:
+        if not access_token:
+            raise HTTPException(status_code=401, detail="Token nedostaje")
+        
+        username = verify_token(access_token)
+        if not username:
+            raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
+        
+        try:
+            oid = ObjectId(user_id)
+        except:
+            raise HTTPException(status_code=400, detail="Neispravan ID")
+
+        new_data = updated_user.dict(exclude_none=True)
+        if "_id" in new_data:
+            del new_data["_id"]
+
+        if "password" in new_data and new_data["password"]:
+            new_data["password"] = bcrypt.hashpw(new_data["password"].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+        result = await users_collection.replace_one(
+            {"_id": oid},
+            new_data
+        )
+
+        if result.matched_count == 0:
+            raise HTTPException(status_code=400, detail="Korisnik nije pronađen")
+
+        updated_user_db = await users_collection.find_one({"_id": oid})
+        return {
+            "message": "Korisnik uspešno ažuriran",
+            "user": user_without_id(updated_user_db)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{user_id}")
+async def delete_user(user_id: str, access_token: str = Cookie(None)):
+    try:
+        if not access_token:
+            raise HTTPException(status_code=401, detail="Token nedostaje")
+        
+        username = verify_token(access_token)
+        if not username:
+            raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
+        
+        if not ObjectId.is_valid(user_id):
+            raise HTTPException(status_code=400, detail="Nevažeći ID korisnika")
+
+        result = await users_collection.delete_one({"_id": ObjectId(user_id)})
+
+        if result.deleted_count == 0:
+            return {"message": "Korisnik već ne postoji ili je već obrisan"}
+
+        return {"message": "Korisnik uspešno obrisan"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/register")
 async def register(user: User, response: Response):
@@ -27,7 +96,6 @@ async def register(user: User, response: Response):
     if existing_user:
         raise HTTPException(status_code=400, detail="Korisnik već postoji")
 
-    # Hash lozinke
     hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
     user_dict = user.dict()
     user_dict["password"] = hashed_password.decode('utf-8')
@@ -35,7 +103,6 @@ async def register(user: User, response: Response):
     await users_collection.insert_one(user_dict)
     user_data = user_without_id(user_dict)
 
-    # Kreiraj token i setuj ga u cookie
     token = create_access_token({"sub": user.username})
     response.set_cookie(
         key="access_token",
@@ -46,10 +113,6 @@ async def register(user: User, response: Response):
         path="/"
     )
     return {"message": "Korisnik uspešno registrovan", "user": user_data}
-
-# ========================
-# Login sa JWT tokenom u HttpOnly cookie
-# ========================
 
 @router.post("/login")
 async def login(data: User, response: Response):
@@ -69,97 +132,17 @@ async def login(data: User, response: Response):
             return {"user": user_without_id(user_in_db)}
     raise HTTPException(status_code=401, detail="Neispravno korisničko ime ili lozinka")
 
-# ========================
-# Logout (uklanjanje cookie)
-# ========================
 @router.post("/logout")
 async def logout(response: Response):
     response.delete_cookie(
         key="access_token",
-        path="/",       # mora biti isto kao kod setovanja
-        httponly=True,  # isto kao kod setovanja
-        samesite="lax", # isto kao kod setovanja
-        secure=False    # localhost
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=False
     )
     return {"message": "Uspešno ste se odjavili"}
-@router.get("")
-async def get_users(access_token: str = Cookie(None)):
-    if not access_token:
-        raise HTTPException(status_code=401, detail="Token nedostaje")
     
-    username = verify_token(access_token)
-    if not username:
-        raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
-    users = []
-    async for user in users_collection.find():
-        users.append(user_without_id(user))
-    return {"users": users}
-
-# ========================
-# Dohvat informacija o korisniku (zaštićena ruta)
-# ========================
-@router.get("/me")
-async def me(access_token: str = Cookie(None)):
-    if not access_token:
-        raise HTTPException(status_code=401, detail="Token nedostaje")
-    
-    username = verify_token(access_token)
-    if not username:
-        raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
-
-    user_in_db = await users_collection.find_one({"username": username})
-    if not user_in_db:
-        raise HTTPException(status_code=404, detail="Korisnik ne postoji")
-    
-    return {"user": user_without_id(user_in_db)}
-
-@router.put("/{user_id}")
-async def update_user(user_id: str, updated_user: User):
-    try:
-        # Pretvaranje user_id u ObjectId
-        try:
-            oid = ObjectId(user_id)
-        except:
-            raise HTTPException(status_code=400, detail="Neispravan ID")
-
-        # Pretvaranje u dict i uklanjanje _id
-        new_data = updated_user.dict(exclude_none=True)
-        if "_id" in new_data:
-            del new_data["_id"]
-
-        result = await users_collection.replace_one(
-            {"_id": oid},
-            new_data
-        )
-
-        if result.matched_count == 0:
-            raise HTTPException(status_code=400, detail="Korisnik nije pronađen")
-
-        return {"message": "Korisnik uspešno ažuriran"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ========================
-# DELETE korisnika
-# ========================
-@router.delete("/{user_id}")
-async def delete_user(user_id: str):
-    try:
-        # prvo proveri da li je user_id validan ObjectId
-        if not ObjectId.is_valid(user_id):
-            raise HTTPException(status_code=400, detail="Nevažeći ID korisnika")
-
-        result = await users_collection.delete_one({"_id": ObjectId(user_id)})
-
-        if result.deleted_count == 0:
-            return {"message": "Korisnik već ne postoji ili je već obrisan"}
-
-        return {"message": "Korisnik uspešno obrisan"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/checkToken")
 async def check_token(access_token: str = Cookie(None)):
     if not access_token:
@@ -176,5 +159,5 @@ async def check_token(access_token: str = Cookie(None)):
     return {
         "message": "Token je validan",
         "username": username,
-        "role": user.get("role", "user")  # default role = user
+        "role": user.get("role", "user")
     }

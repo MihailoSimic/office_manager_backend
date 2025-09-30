@@ -11,7 +11,7 @@ def serialize_seat(seat):
         "seat_number": seat["seat_number"],
         "row": seat["row"],
         "col": seat["col"],
-        "enabled": seat.get("enabled", True)  # dodato polje enabled
+        "enabled": seat.get("enabled", True)
     }
 
 @router.get("/")
@@ -26,7 +26,6 @@ async def get_all_seats(access_token: str = Cookie(None)):
     seats = await seats_collection.find().to_list(length=100)
     return [serialize_seat(seat) for seat in seats]
 
-# POST ruta koja briše sva sedišta i ubacuje nova
 @router.post("/")
 async def create_seats(
     new_seats: List[dict] = Body(...),
@@ -39,12 +38,9 @@ async def create_seats(
     if not username:
         raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
     
-    # Obriši sva postojeća sedišta
     await seats_collection.delete_many({})
     
-    # Ubaci nova sedišta
     result = await seats_collection.insert_many(new_seats)
     
-    # Dohvati nova sedišta da ih vrati FE
     seats = await seats_collection.find().to_list(length=100)
     return [serialize_seat(seat) for seat in seats]
