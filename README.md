@@ -1,34 +1,34 @@
 # Office Manager Backend
 
-## Pokretanje lokalno
+## Running Locally
 
-1. Instaliraj Python 3.10+  
-2. Kreiraj i aktiviraj virtuelno okruženje:
+1. Install Python 3.10+  
+2. Create and activate a virtual environment:
    ```bash
    python -m venv venv
    venv\Scripts\activate
    ```
-3. Instaliraj zavisnosti:
+3. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-4. Pokreni aplikaciju:
+4. Start the application:
    ```bash
    uvicorn main:app --reload
    ```
-   Backend će raditi na [http://localhost:8000](http://localhost:8000).
+   The backend will run at [http://localhost:8000](http://localhost:8000).
 
-⚠️ Potrebno je da MongoDB radi lokalno (default na `mongodb://localhost:27017/office_manager`).  
-Ako koristiš drugu konekciju, promeni `MONGO_URI` u `db.py` fajlu.
+⚠️ MongoDB must be running locally (default at `mongodb://localhost:27017/office_manager`).  
+If you use a different connection, change the `MONGO_URI` in the `db.py` file.
 
 ---
 
-## Pokretanje sa Docker-om
+## Running with Docker
 
-1. U root folderu projekta nalazi se `docker-compose.yml` koji podiže **MongoDB**, **backend** i **frontend**.  
-2. Pokreni:
+1. In the root folder of the project, there is a `docker-compose.yml` file that starts **MongoDB**, **backend**, and **frontend**.  
+2. Run:
    ```bash
    docker compose up --build
    ```
-3. Backend će biti dostupan na [http://localhost:8000](http://localhost:8000).  
-   MongoDB se pokreće u kontejneru i backend je povezan direktno preko `MONGO_URI=mongodb://mongo:27017/office_manager`.
+3. The backend will be available at [http://localhost:8000](http://localhost:8000).  
+   MongoDB runs in a container and the backend is connected directly via `MONGO_URI=mongodb://mongo:27017/office_manager`.
