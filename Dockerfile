@@ -6,7 +6,7 @@ WORKDIR /app
 COPY ./requirements.txt /app/requirements.txt
 
 # Instaliraj dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -r requirements.txt
 
 # Kopiraj ostatak koda
 COPY . /app

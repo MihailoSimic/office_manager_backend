@@ -3,4 +3,4 @@ uvicorn[standard]
 motor
 pydantic
 python-jose
-bycrypt
+bcrypt
