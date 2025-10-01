@@ -1,10 +1,10 @@
-# auth.py
+from fastapi import Response, HTTPException
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 
-SECRET_KEY = "tajni_kljuc"  # drži tajnim
+SECRET_KEY = "tajni_kljuc"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = 10
 
 def create_access_token(data: dict):
     to_encode = data.copy()
@@ -22,3 +22,20 @@ def verify_token(token: str):
         return username
     except JWTError:
         return None
+    
+def require_and_refresh_token(response: Response, access_token: str):
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Token nedostaje")
+    username = verify_token(access_token)
+    if not username:
+        raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
+    new_token = create_access_token({"sub": username})
+    response.set_cookie(
+        key="access_token",
+        value=new_token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        path="/"
+    )
+    return username

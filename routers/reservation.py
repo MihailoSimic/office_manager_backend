@@ -1,9 +1,9 @@
-from fastapi import APIRouter, HTTPException, Cookie, Depends
+from fastapi import APIRouter, HTTPException, Cookie, Depends, Response
 from db import reservations_collection
 from models.reservation import Reservation
-from auth import verify_token
+from auth import verify_token, require_and_refresh_token
 from bson import ObjectId
-
+from auth import create_access_token
 router = APIRouter(prefix="/reservation", tags=["reservation"])
 
 async def get_current_user(access_token: str = Cookie(None)):
@@ -15,7 +15,8 @@ async def get_current_user(access_token: str = Cookie(None)):
     return username
 
 @router.get("/")
-async def get_reservations():
+async def get_reservations(response: Response, access_token: str = Cookie(None)):
+    require_and_refresh_token(response, access_token)
     try:
         reservations = await reservations_collection.find({}).to_list(length=100)
         for r in reservations:
@@ -24,7 +25,12 @@ async def get_reservations():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Greška pri dohvatanju rezervacija: {str(e)}")
 @router.get("/my")
-async def get_my_reservations(current_user: str = Depends(get_current_user)):
+async def get_my_reservations(
+    response: Response,
+    access_token: str = Cookie(None),
+    current_user: str = Depends(get_current_user)
+):
+    require_and_refresh_token(response, access_token)
     try:
         reservations = await reservations_collection.find({"username": current_user}).to_list(length=100)
         for r in reservations:
@@ -35,9 +41,12 @@ async def get_my_reservations(current_user: str = Depends(get_current_user)):
 
 @router.post("/create")
 async def create_reservation(
+    response: Response,
     reservation: Reservation,
+    access_token: str = Cookie(None),
     current_user: str = Depends(get_current_user)
 ):
+    require_and_refresh_token(response, access_token)
     reservation.username = current_user
 
     existing = await reservations_collection.find_one({
@@ -64,9 +73,12 @@ async def create_reservation(
 
 @router.put("/{reservation_id}")
 async def update_reservation_status(
+    response: Response,
     reservation_id: str,
-    status: str
+    status: str,
+    access_token: str = Cookie(None)
 ):
+    require_and_refresh_token(response, access_token)
     allowed_statuses = {"approved", "rejected", "pending"}
     if status not in allowed_statuses:
         raise HTTPException(status_code=400, detail="Nevalidan status rezervacije")
@@ -107,7 +119,13 @@ async def update_reservation_status(
     return {"message": f"Rezervacija je uspešno ažurirana sa statusom {status}"}
 
 @router.delete("/{reservation_id}")
-async def delete_reservation(reservation_id: str, current_user: str = Depends(get_current_user)):
+async def delete_reservation(
+    reservation_id: str,
+    response: Response,
+    current_user: str = Depends(get_current_user),
+    access_token: str = Cookie(None)
+):
+    require_and_refresh_token(response, access_token)
     try:
         obj_id = ObjectId(reservation_id)
     except Exception:

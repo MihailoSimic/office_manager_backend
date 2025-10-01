@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Cookie, Response
 from db import users_collection
 from models.user import User
 from bson import ObjectId
-from auth import create_access_token, verify_token
+from auth import create_access_token, verify_token, require_and_refresh_token
 import bcrypt
 import re
 
@@ -16,12 +16,8 @@ def user_without_id(user_dict):
     return user_copy
 
 @router.get("")
-async def get_users(access_token: str = Cookie(None)):
-    if not access_token:
-        raise HTTPException(status_code=401, detail="Token nedostaje")
-    username = verify_token(access_token)
-    if not username:
-        raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
+async def get_users(response: Response, access_token: str = Cookie(None)):
+    require_and_refresh_token(response, access_token)
     try:
         users = []
         async for user in users_collection.find():
@@ -33,15 +29,9 @@ async def get_users(access_token: str = Cookie(None)):
         raise HTTPException(status_code=500, detail=f"Greška pri dohvatanju korisnika: {str(e)}")
 
 @router.put("/{user_id}")
-async def update_user(user_id: str, updated_user: User, access_token: str = Cookie(None)):
+async def update_user(user_id: str, updated_user: User, response: Response, access_token: str = Cookie(None)):
     try:
-        if not access_token:
-            raise HTTPException(status_code=401, detail="Token nedostaje")
-        
-        username = verify_token(access_token)
-        if not username:
-            raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
-        
+        require_and_refresh_token(response, access_token)
         try:
             oid = ObjectId(user_id)
         except:
@@ -51,16 +41,16 @@ async def update_user(user_id: str, updated_user: User, access_token: str = Cook
         if "_id" in new_data:
             del new_data["_id"]
 
-            if "password" in new_data:
-                pw = new_data["password"]
-                if pw == "":
-                    raise HTTPException(status_code=400, detail="Lozinka ne sme biti prazna.")
-                if isinstance(pw, str) and pw.startswith("$2"):
-                    pass
-                elif isinstance(pw, str):
-                    new_data["password"] = bcrypt.hashpw(pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                else:
-                    del new_data["password"]
+        if "password" in new_data:
+            pw = new_data["password"]
+            if pw == "":
+                raise HTTPException(status_code=400, detail="Lozinka ne sme biti prazna.")
+            if isinstance(pw, str) and pw.startswith("$2"):
+                pass
+            elif isinstance(pw, str):
+                new_data["password"] = bcrypt.hashpw(pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            else:
+                del new_data["password"]
 
         try:
             result = await users_collection.replace_one(
@@ -88,15 +78,9 @@ async def update_user(user_id: str, updated_user: User, access_token: str = Cook
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{user_id}")
-async def delete_user(user_id: str, access_token: str = Cookie(None)):
+async def delete_user(user_id: str, response: Response, access_token: str = Cookie(None)):
     try:
-        if not access_token:
-            raise HTTPException(status_code=401, detail="Token nedostaje")
-        
-        username = verify_token(access_token)
-        if not username:
-            raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
-        
+        require_and_refresh_token(response, access_token)
         if not ObjectId.is_valid(user_id):
             raise HTTPException(status_code=400, detail="Nevažeći ID korisnika")
 
@@ -118,7 +102,6 @@ async def register(user: User, response: Response):
         if existing_user:
             raise HTTPException(status_code=400, detail="Korisnik već postoji")
 
-        # Regex identičan kao na FE: bar 5 karaktera, jedno veliko slovo, jedan broj i jedan specijalan znak
         password_regex = r'^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};\':"\\|,.<>/?]).{5,}$'
         if not re.match(password_regex, user.password):
             raise HTTPException(status_code=400, detail="Lozinka mora imati bar 5 karaktera, jedno veliko slovo, jedan broj i jedan specijalan znak.")
@@ -183,22 +166,17 @@ async def logout(response: Response):
         raise HTTPException(status_code=500, detail=f"Greška pri odjavi: {str(e)}")
     
 @router.get("/checkToken")
-async def check_token(access_token: str = Cookie(None)):
+async def check_token(response: Response, access_token: str = Cookie(None)):
     try:
-        if not access_token:
-            raise HTTPException(status_code=401, detail="Token nedostaje")
+        require_and_refresh_token(response, access_token)
 
-        username = verify_token(access_token)
-        if not username:
-            raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
-
-        user = await users_collection.find_one({"username": username})
+        user = await users_collection.find_one({"username": verify_token(access_token)})
         if not user:
             raise HTTPException(status_code=401, detail="Korisnik ne postoji")
 
         return {
             "message": "Token je validan",
-            "username": username,
+            "username": user["username"],
             "role": user.get("role", "user")
         }
     except HTTPException:

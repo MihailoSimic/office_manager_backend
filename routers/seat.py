@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Cookie, Body
+from auth import require_and_refresh_token
+from fastapi import APIRouter, HTTPException, Cookie, Body, Response
 from db import seats_collection
 from auth import verify_token
 from typing import List
-
+from auth import create_access_token 
 router = APIRouter(prefix="/seat", tags=["seat"])
 
 def serialize_seat(seat):
@@ -15,12 +16,8 @@ def serialize_seat(seat):
     }
 
 @router.get("/")
-async def get_all_seats(access_token: str = Cookie(None)):
-    if not access_token:
-        raise HTTPException(status_code=401, detail="Token nedostaje")
-    username = verify_token(access_token)
-    if not username:
-        raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
+async def get_all_seats(response: Response, access_token: str = Cookie(None)):
+    require_and_refresh_token(response, access_token)
     try:
         seats = await seats_collection.find().to_list(length=100)
         return [serialize_seat(seat) for seat in seats]
@@ -30,13 +27,10 @@ async def get_all_seats(access_token: str = Cookie(None)):
 @router.post("/")
 async def create_seats(
     new_seats: List[dict] = Body(...),
+    response: Response = None,
     access_token: str = Cookie(None)
 ):
-    if not access_token:
-        raise HTTPException(status_code=401, detail="Token nedostaje")
-    username = verify_token(access_token)
-    if not username:
-        raise HTTPException(status_code=401, detail="Neispravan ili istekao token")
+    require_and_refresh_token(response, access_token)
 
     # Validacija unosa
     if not isinstance(new_seats, list) or not all(isinstance(seat, dict) for seat in new_seats):
