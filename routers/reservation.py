@@ -23,6 +23,15 @@ async def get_reservations():
         return reservations
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Greška pri dohvatanju rezervacija: {str(e)}")
+@router.get("/my")
+async def get_my_reservations(current_user: str = Depends(get_current_user)):
+    try:
+        reservations = await reservations_collection.find({"username": current_user}).to_list(length=100)
+        for r in reservations:
+            r["_id"] = str(r["_id"])
+        return reservations
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Greška pri dohvatanju rezervacija korisnika: {str(e)}")
 
 @router.post("/create")
 async def create_reservation(
@@ -96,3 +105,28 @@ async def update_reservation_status(
         raise HTTPException(status_code=404, detail="Rezervacija nije pronađena (tokom ažuriranja)")
 
     return {"message": f"Rezervacija je uspešno ažurirana sa statusom {status}"}
+
+@router.delete("/{reservation_id}")
+async def delete_reservation(reservation_id: str, current_user: str = Depends(get_current_user)):
+    try:
+        obj_id = ObjectId(reservation_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Neispravan ID rezervacije")
+
+    reservation = await reservations_collection.find_one({"_id": obj_id})
+    if not reservation:
+        raise HTTPException(status_code=404, detail="Rezervacija nije pronađena")
+
+    if reservation.get("username") != current_user:
+        if current_user != "admin":
+            raise HTTPException(status_code=403, detail="Nemate pravo da obrišete ovu rezervaciju")
+
+    try:
+        result = await reservations_collection.delete_one({"_id": obj_id})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Greška pri otkazivanju rezervacije: {str(e)}")
+
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Rezervacija nije pronađena (tokom otkazivanja)")
+
+    return {"message": "Rezervacija je uspešno obrisana."}

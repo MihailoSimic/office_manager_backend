@@ -27,6 +27,8 @@ async def get_users(access_token: str = Cookie(None)):
         async for user in users_collection.find():
             users.append(user_without_id(user))
         return {"users": users}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Greška pri dohvatanju korisnika: {str(e)}")
 
@@ -49,11 +51,16 @@ async def update_user(user_id: str, updated_user: User, access_token: str = Cook
         if "_id" in new_data:
             del new_data["_id"]
 
-        if "password" in new_data:
-            if new_data["password"] == "":
-                raise HTTPException(status_code=400, detail="Lozinka ne sme biti prazna.")
-            elif new_data["password"]:
-                new_data["password"] = bcrypt.hashpw(new_data["password"].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            if "password" in new_data:
+                pw = new_data["password"]
+                if pw == "":
+                    raise HTTPException(status_code=400, detail="Lozinka ne sme biti prazna.")
+                if isinstance(pw, str) and pw.startswith("$2"):
+                    pass
+                elif isinstance(pw, str):
+                    new_data["password"] = bcrypt.hashpw(pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                else:
+                    del new_data["password"]
 
         try:
             result = await users_collection.replace_one(
@@ -99,6 +106,8 @@ async def delete_user(user_id: str, access_token: str = Cookie(None)):
             return {"message": "Korisnik već ne postoji ili je već obrisan"}
 
         return {"message": "Korisnik uspešno obrisan"}
+    except HTTPException as e:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
