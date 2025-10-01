@@ -4,6 +4,7 @@ from models.reservation import Reservation
 from auth import verify_token, require_and_refresh_token
 from bson import ObjectId
 from auth import create_access_token
+from datetime import datetime, date
 router = APIRouter(prefix="/reservation", tags=["reservation"])
 
 async def get_current_user(access_token: str = Cookie(None)):
@@ -18,7 +19,7 @@ async def get_current_user(access_token: str = Cookie(None)):
 async def get_reservations(response: Response, access_token: str = Cookie(None)):
     require_and_refresh_token(response, access_token)
     try:
-        reservations = await reservations_collection.find({}).to_list(length=100)
+        reservations = await reservations_collection.find({}).to_list(length=1000)
         for r in reservations:
             r["_id"] = str(r["_id"])
         return reservations
@@ -32,7 +33,7 @@ async def get_my_reservations(
 ):
     require_and_refresh_token(response, access_token)
     try:
-        reservations = await reservations_collection.find({"username": current_user}).to_list(length=100)
+        reservations = await reservations_collection.find({"username": current_user}).to_list(length=1000)
         for r in reservations:
             r["_id"] = str(r["_id"])
         return reservations
@@ -49,18 +50,25 @@ async def create_reservation(
     require_and_refresh_token(response, access_token)
     reservation.username = current_user
 
+    try:
+        res_date = datetime.strptime(reservation.date, "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Neispravan format datuma. Očekivan format je YYYY-MM-DD.")
+    if res_date < date.today():
+        raise HTTPException(status_code=400, detail="Nije moguće napraviti rezervaciju za datum u prošlosti.")
+
     existing = await reservations_collection.find_one({
         "date": reservation.date,
         "seat_number": reservation.seat_number,
         "status": {"$in": ["approved", "pending"]}
     })
-    if existing:
-        raise HTTPException(
-            status_code=400,
-            detail="Mesto je već zauzeto (rezervacija je već u toku ili odobrena) za odabrani datum"
-        )
-
     try:
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="Mesto je već zauzeto (rezervacija je već u toku ili odobrena) za odabrani datum"
+            )
+
         result = await reservations_collection.insert_one(reservation.dict())
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Greška pri kreiranju rezervacije: {str(e)}")

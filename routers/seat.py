@@ -19,7 +19,7 @@ def serialize_seat(seat):
 async def get_all_seats(response: Response, access_token: str = Cookie(None)):
     require_and_refresh_token(response, access_token)
     try:
-        seats = await seats_collection.find().to_list(length=100)
+        seats = await seats_collection.find().to_list(length=1000)
         return [serialize_seat(seat) for seat in seats]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Greška pri dohvatanju sedišta: {str(e)}")
@@ -39,7 +39,7 @@ async def create_seats(
     try:
         await seats_collection.delete_many({})
         result = await seats_collection.insert_many(new_seats)
-        seats = await seats_collection.find().to_list(length=100)
+        seats = await seats_collection.find().to_list(length=1000)
         return [serialize_seat(seat) for seat in seats]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Greška pri kreiranju sedišta: {str(e)}")
