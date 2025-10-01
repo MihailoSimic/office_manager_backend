@@ -168,7 +168,7 @@ async def logout(response: Response):
 @router.get("/checkToken")
 async def check_token(response: Response, access_token: str = Cookie(None)):
     try:
-        user = await users_collection.find_one({"username": require_and_refresh_token(access_token)})
+        user = await users_collection.find_one({"username": require_and_refresh_token(response,access_token)})
         if not user:
             raise HTTPException(status_code=401, detail="Korisnik ne postoji")
 
