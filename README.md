@@ -37,6 +37,8 @@ If you use a different connection, change the `MONGO_URI` in the `db.py` file.
 
 ## Running with Docker
 
+⚠️ **IMPORTANT:** Before running Docker, make sure that both the backend and frontend repositories are located in the same parent folder, so that the relative path `../office_manager_frontend` (used in the Docker setup) is valid.
+
 1. In the root folder of the project, there is a `docker-compose.yml` file that starts **MongoDB**, **backend**, and **frontend**.
 2. Run:
    ```bash
