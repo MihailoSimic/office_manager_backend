@@ -30,13 +30,11 @@ async def create_seats(
     response: Response = None,
     access_token: str = Cookie(None)
 ):
-    require_and_refresh_token(response, access_token)
-
-    # Validacija unosa
-    if not isinstance(new_seats, list) or not all(isinstance(seat, dict) for seat in new_seats):
-        raise HTTPException(status_code=400, detail="Pogrešan format podataka za sedišta.")
-
     try:
+        require_and_refresh_token(response, access_token)
+
+        if not isinstance(new_seats, list) or not all(isinstance(seat, dict) for seat in new_seats):
+            raise HTTPException(status_code=400, detail="Pogrešan format podataka za sedišta.")
         await seats_collection.delete_many({})
         result = await seats_collection.insert_many(new_seats)
         seats = await seats_collection.find().to_list(length=1000)

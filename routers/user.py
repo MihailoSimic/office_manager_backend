@@ -32,10 +32,9 @@ async def get_users(response: Response, access_token: str = Cookie(None)):
 async def update_user(user_id: str, updated_user: User, response: Response, access_token: str = Cookie(None)):
     try:
         require_and_refresh_token(response, access_token)
-        try:
-            oid = ObjectId(user_id)
-        except:
+        if not ObjectId.is_valid(user_id):
             raise HTTPException(status_code=400, detail="Neispravan ID")
+        oid = ObjectId(user_id)
 
         new_data = updated_user.dict(exclude_none=True)
         if "_id" in new_data:
@@ -52,30 +51,22 @@ async def update_user(user_id: str, updated_user: User, response: Response, acce
             else:
                 del new_data["password"]
 
-        try:
-            result = await users_collection.replace_one(
-                {"_id": oid},
-                new_data
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Greška pri ažuriranju korisnika: {str(e)}")
-
+        result = await users_collection.replace_one(
+            {"_id": oid},
+            new_data
+        )
         if result.matched_count == 0:
             raise HTTPException(status_code=400, detail="Korisnik nije pronađen")
 
-        try:
-            updated_user_db = await users_collection.find_one({"_id": oid})
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Greška pri dohvatanju ažuriranog korisnika: {str(e)}")
+        updated_user_db = await users_collection.find_one({"_id": oid})
         return {
             "message": "Korisnik uspešno ažuriran",
             "user": user_without_id(updated_user_db)
         }
-
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Greška pri ažuriranju korisnika: {str(e)}")
 
 @router.delete("/{user_id}")
 async def delete_user(user_id: str, response: Response, access_token: str = Cookie(None)):
