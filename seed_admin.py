@@ -8,7 +8,7 @@ def generate_seat_grid(rows=3, cols=3):
     for row in range(1, rows + 1):
         for col in range(1, cols + 1):
             seats.append({
-                "seat_number": str(seat_number),
+                "seat_number": seat_number,
                 "row": row,
                 "col": col,
                 "enabled": True
