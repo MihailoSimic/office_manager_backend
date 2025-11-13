@@ -2,7 +2,7 @@ from fastapi import Response, HTTPException
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 
-SECRET_KEY = "tajni_kljuc"
+SECRET_KEY = "secret_key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 10
 
